@@ -23,12 +23,11 @@ func main() {
 	state := NewState()
 
 	http.Handle("/", &RootHandler{state})
+	http.Handle("/_xpack", &XpackHandler{state})
 
 	// Wrap the default handler/multiplexer to log incoming requests
 	mux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			log.Printf("%s %s %s\n", r.Method, r.RequestURI, GetIp(r))
-		}()
+		defer func() { log.Printf("%s %s %s\n", r.Method, r.RequestURI, GetIp(r)) }()
 		http.DefaultServeMux.ServeHTTP(w, r)
 	})
 
