@@ -20,23 +20,31 @@ func main() {
 
 	log.Printf("using %s:%d\n", addr, port)
 
-	state, err := NewState()
-	if err != nil {
-		log.Panic(err)
-	}
+	state := NewState()
 
 	http.Handle("/", &RootHandler{state})
 
+	// Wrap the default handler/multiplexer to log incoming requests
+	mux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			log.Printf("%s %s %s\n", r.Method, r.RequestURI, GetIp(r))
+		}()
+		http.DefaultServeMux.ServeHTTP(w, r)
+	})
+
+	server := http.Server{
+		   Addr: fmt.Sprintf("%s:%d", addr, port),
+		Handler: mux,
+	}
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	server := http.Server{ Addr: fmt.Sprintf("%s:%d", addr, port) }
 
 	go func() {
 		s := <-sigChan
 		log.Printf("terminating signal received (%d)\n", s)
 
-		// This causes ListenAndServe to return with ErrServerClosed
+		// Cause ListenAndServe to return with ErrServerClosed
 		server.Close()
 	}()
 
