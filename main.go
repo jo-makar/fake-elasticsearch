@@ -23,6 +23,7 @@ func main() {
 	state := NewState()
 
 	http.Handle("/", &RootHandler{state})
+	http.Handle("/_ingest/pipeline/", &PipelineHandler{state})
 	http.Handle("/_xpack", &XpackHandler{state})
 
 	// Wrap the default handler/multiplexer to log incoming requests

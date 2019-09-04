@@ -8,6 +8,7 @@ Primarily interested in providing behavior that mimics the [Bulk API](https://ww
 | ---------- | ---------------------- | ----- |
 | filebeat 7.3.1 | GET / | TODO Where is this documented? |
 | filebeat 7.3.1 | GET /_xpack?human=false | [Info API](https://www.elastic.co/guide/en/elasticsearch/reference/current/info-api.html) |
+| filebeat 7.3.1 | GET,PUT /_ingest/pipeline/&lt;id&gt; | [Ingest APIs](https://www.elastic.co/guide/en/elasticsearch/reference/current/ingest-apis.html) |
 
 ## TLS support
 

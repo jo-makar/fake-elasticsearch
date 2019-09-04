@@ -1,8 +1,10 @@
 package main
 
 import (
+	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 )
 
 // Nested, anonymous structs are not easy to deal with hence just returning hard-coded literals for the time being.
@@ -19,7 +21,14 @@ import (
 //	if resp2, err := json.Marshal(respMap); err != nil { ... }
 
 type RootHandler struct { *State }
+type PipelineHandler struct { *State }
 type XpackHandler struct { *State }
+
+func write(b []byte, w *http.ResponseWriter, r *http.Request) {
+	if _, err := (*w).Write(b); err != nil {
+		log.Printf("%s: %s: unable to write response: %s\n", r.RequestURI, GetIp(r), err)
+	}
+}
 
 func (h *RootHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
@@ -56,9 +65,7 @@ func (h *RootHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	`
 
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte(resp)); err != nil {
-		log.Printf("%s: %s: unable to write response: %s\n", r.RequestURI, GetIp(r), err)
-	}
+	write([]byte(resp), &w, r)
 }
 
 func (h *XpackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +115,45 @@ func (h *XpackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	`
 
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte(resp)); err != nil {
-		log.Printf("%s: %s: unable to write response: %s\n", r.RequestURI, GetIp(r), err)
+	write([]byte(resp), &w, r)
+}
+
+func (h *PipelineHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !strings.HasPrefix(r.URL.Path, "/_ingest/pipeline/") {
+		log.Printf("%s: %s: not found\n", r.RequestURI, GetIp(r))
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	if r.Method != http.MethodGet && r.Method != http.MethodPut {
+		log.Printf("%s: %s: unsupported method (%s)\n", r.RequestURI, GetIp(r), r.Method)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	t := strings.Split(r.URL.Path, "/")
+	if len(t) != 4 {
+		log.Printf("%s: %s: invalid pipeline id\n", r.RequestURI, GetIp(r))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	id := t[3]
+
+	if r.Method == http.MethodGet {
+		if v, ok := h.pipelines[id]; ok {
+			w.WriteHeader(http.StatusOK)
+			write([]byte(v), &w, r)
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	} else /* MethodPut */ {
+		b, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("%s: %s: unable to read request: %s\n", r.RequestURI, GetIp(r), err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		h.pipelines[id] = string(b)
+		w.WriteHeader(http.StatusAccepted)
 	}
 }
