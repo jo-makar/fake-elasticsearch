@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -21,7 +22,9 @@ import (
 //	if resp2, err := json.Marshal(respMap); err != nil { ... }
 
 type RootHandler struct { *State }
+type BulkHandler struct { *State }
 type PipelineHandler struct { *State }
+type TemplateHandler struct { *State }
 type XpackHandler struct { *State }
 
 func write(b []byte, w *http.ResponseWriter, r *http.Request) {
@@ -31,6 +34,11 @@ func write(b []byte, w *http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RootHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/_bulk") {
+		(&BulkHandler{h.State}).ServeHTTP(w, r)
+		return
+	}
+
 	if r.URL.Path != "/" {
 		log.Printf("%s: %s: not found\n", r.RequestURI, GetIp(r))
 		w.WriteHeader(http.StatusNotFound)
@@ -156,4 +164,74 @@ func (h *PipelineHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.pipelines[id] = string(b)
 		w.WriteHeader(http.StatusAccepted)
 	}
+}
+
+func (h *TemplateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !strings.HasPrefix(r.URL.Path, "/_template/") {
+		log.Printf("%s: %s: not found\n", r.RequestURI, GetIp(r))
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodPut {
+		log.Printf("%s: %s: unsupported method (%s)\n", r.RequestURI, GetIp(r), r.Method)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	t := strings.Split(r.URL.Path, "/")
+	if len(t) != 3 {
+		log.Printf("%s: %s: invalid template id\n", r.RequestURI, GetIp(r))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	id := t[2]
+
+	if r.Method == http.MethodHead || r.Method == http.MethodGet {
+		if v, ok := h.templates[id]; ok {
+			w.WriteHeader(http.StatusOK)
+			if r.Method == http.MethodGet {
+				write([]byte(v), &w, r)
+			}
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	} else /* MethodPut */ {
+		b, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("%s: %s: unable to read request: %s\n", r.RequestURI, GetIp(r), err)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		h.templates[id] = string(b)
+		w.WriteHeader(http.StatusAccepted)
+	}
+}
+
+func (h *BulkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !strings.HasSuffix(r.URL.Path, "/_bulk") {
+		log.Printf("%s: %s: not found\n", r.RequestURI, GetIp(r))
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		log.Printf("%s: %s: unsupported method (%s)\n", r.RequestURI, GetIp(r), r.Method)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	scanner := bufio.NewScanner(r.Body)
+	for scanner.Scan() {
+		// FIXME STOPPED process input
+		//log.Printf("line = %s\n", scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		log.Printf("%s: %s: unable to read request: %s\n", r.RequestURI, GetIp(r), err)
+		w.WriteHeader(http.StatusPartialContent)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+
+	// FIXME STOPPED write response
 }
